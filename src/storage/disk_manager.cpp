@@ -32,6 +32,7 @@ void DiskManager::Close() {
   std::scoped_lock<std::recursive_mutex> lock(db_io_latch_);
   WritePhysicalPage(META_PAGE_ID, meta_data_);
   if (!closed) {
+    db_io_.flush();
     db_io_.close();
     closed = true;
   }
@@ -192,5 +193,5 @@ void DiskManager::WritePhysicalPage(page_id_t physical_page_id, const char *page
     return;
   }
   // needs to flush to keep disk file in sync
-  db_io_.flush();
+  // db_io_.flush();
 }

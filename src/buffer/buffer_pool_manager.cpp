@@ -9,8 +9,7 @@ BufferPoolManager::BufferPoolManager(size_t pool_size, DiskManager *disk_manager
     : pool_size_(pool_size), disk_manager_(disk_manager) {
   pages_ = new Page[pool_size_];
   replacer_ = new LRUReplacer(pool_size_);
-  // replacer_ = new ARCReplacer(pool_size_); 
-  // Above is the bonus replacement policy: Adaptive Replacement Cache
+  // Above is the bonus replacement policy: Clock Replacement Cache
   for (size_t i = 0; i < pool_size_; i++) {
     free_list_.emplace_back(i);
   }

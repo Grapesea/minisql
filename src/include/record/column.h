@@ -37,7 +37,8 @@ class Column {
   static uint32_t DeserializeFrom(char *buf, Column *&column);
 
  private:
-  static constexpr uint32_t COLUMN_MAGIC_NUM = 210928;
+  static constexpr uint32_t COLUMN_MAGIC_NUM = 210928; 
+  // This magic number can be interpretted as a verification, and can be neglected.
   std::string name_;
   TypeId type_;
   uint32_t len_{0};  // for char type this is the maximum byte length of the string data,

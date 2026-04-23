@@ -60,29 +60,38 @@ bool TablePage::MarkDelete(const RowId &rid, Txn *txn, LockManager *lock_manager
 }
 
 bool TablePage::UpdateTuple(Row &new_row, Row *old_row, Schema *schema, Txn *txn, LockManager *lock_manager,
-                            LogManager *log_manager) {
+                            LogManager *log_manager, uint32_t *error_type) {
+  *error_type = 1; 
   ASSERT(old_row != nullptr && old_row->GetRowId().Get() != INVALID_ROWID.Get(), "invalid old row.");
   uint32_t serialized_size = new_row.GetSerializedSize(schema);
+
+  *error_type = 2;
   ASSERT(serialized_size > 0, "Can not have empty row.");
+  
   uint32_t slot_num = old_row->GetRowId().GetSlotNum();
   // If the slot number is invalid, abort.
   if (slot_num >= GetTupleCount()) {
+    *error_type = 3;
     return false;
   }
   uint32_t tuple_size = GetTupleSize(slot_num);
   // If the tuple is deleted, abort.
   if (IsDeleted(tuple_size)) {
+    *error_type = 4;
     return false;
   }
   // If there is not enough space to update, we need to update via delete followed by an insert (not enough space).
   if (GetFreeSpaceRemaining() + tuple_size < serialized_size) {
+    *error_type = 5;
     return false;
   }
   // Copy out the old value.
   uint32_t tuple_offset = GetTupleOffsetAtSlot(slot_num);
   uint32_t __attribute__((unused)) read_bytes = old_row->DeserializeFrom(GetData() + tuple_offset, schema);
+  *error_type = 6;
   ASSERT(tuple_size == read_bytes, "Unexpected behavior in tuple deserialize.");
   uint32_t free_space_pointer = GetFreeSpacePointer();
+  *error_type = 7;
   ASSERT(tuple_offset >= free_space_pointer, "Offset should appear after current free space position.");
   memmove(GetData() + free_space_pointer + tuple_size - serialized_size, GetData() + free_space_pointer,
           tuple_offset - free_space_pointer);
@@ -97,6 +106,8 @@ bool TablePage::UpdateTuple(Row &new_row, Row *old_row, Schema *schema, Txn *txn
       SetTupleOffsetAtSlot(i, tuple_offset_i + tuple_size - new_row.GetSerializedSize(schema));
     }
   }
+  // if update successfully, error_type == 0
+  *error_type = 0;
   return true;
 }
 

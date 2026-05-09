@@ -22,6 +22,8 @@
  * | HEADER | KEY(1)+PAGE_ID(1) | KEY(2)+PAGE_ID(2) | ... | KEY(n)+PAGE_ID(n) |
  *  --------------------------------------------------------------------------
  */
+// (KEY(1) 是 Invalid? 感觉讲得不清楚，最后一个组合应该是n+1才对)
+
 class BPlusTreeInternalPage : public BPlusTreePage {
  public:
   // must call initialize method after "create" a new node

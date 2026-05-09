@@ -32,6 +32,7 @@ class IndexIterator {
   int item_index{0};
   BufferPoolManager *buffer_pool_manager{nullptr};
   // add your own private member variables here
+  // 感觉没必要添加.
 };
 
 #endif  // MINISQL_INDEX_ITERATOR_H

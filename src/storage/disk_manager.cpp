@@ -132,7 +132,7 @@ bool DiskManager::IsPageFree(page_id_t logical_page_id) {
   uint32_t index = physical_id / (1+BITMAP_SIZE);
 
   page_id_t physical_id_bitmap = index * (BITMAP_SIZE + 1) + 1;
-  uint32_t offset = physical_id - physical_id_bitmap;
+  uint32_t offset = physical_id - physical_id_bitmap - 1;
 
   char bitmap_page_data[PAGE_SIZE];
   ReadPhysicalPage(physical_id_bitmap, bitmap_page_data);
@@ -193,5 +193,5 @@ void DiskManager::WritePhysicalPage(page_id_t physical_page_id, const char *page
     return;
   }
   // needs to flush to keep disk file in sync
-  // db_io_.flush();
+  // db_io_.flush(); // Modified here, to reduce I/O write/read.
 }

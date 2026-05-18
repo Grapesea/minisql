@@ -135,5 +135,5 @@ private:
     ATT active_txns_{};
     KvDatabase data_{};  // all data in database
 };
-
+// This part was finished by Haowen Zhou.
 #endif  // MINISQL_RECOVERY_MANAGER_H

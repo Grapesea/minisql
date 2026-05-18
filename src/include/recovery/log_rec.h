@@ -134,5 +134,6 @@ static LogRecPtr CreateAbortLog(txn_id_t txn_id) {
     LogRec::prev_lsn_map_[txn_id] = rec->lsn_;
     return rec;
 }
+// This part was finished by Haowen Zhou.
 
 #endif  // MINISQL_LOG_REC_H

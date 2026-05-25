@@ -5,6 +5,17 @@
 #include <sys/types.h>
 
 #include <chrono>
+#include <fstream>      // for ExecuteExecfile
+#include <iomanip>      // for setw, left (可能已有)
+#include <algorithm>    // for max (可能已有)
+
+extern "C" {
+#include "parser/minisql_lex.h"
+#include "parser/minisql_yacc.h"
+#include "parser/parser.h"
+
+int yyparse(void);
+}
 
 #include "common/result_writer.h"
 #include "executor/executors/delete_executor.h"
@@ -15,7 +26,9 @@
 #include "executor/executors/values_executor.h"
 #include "glog/logging.h"
 #include "planner/planner.h"
-#include "utils/utils.h"
+#include "utils/utils.h"   
+
+extern int yyparse(void);
 
 ExecuteEngine::ExecuteEngine() {
   char path[] = "./databases";
@@ -344,7 +357,66 @@ dberr_t ExecuteEngine::ExecuteCreateTable(pSyntaxNode ast, ExecuteContext *conte
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteCreateTable" << std::endl;
 #endif
-  return DB_FAILED;
+  if (current_db_.empty()) {
+    cout << "No database selected" << endl;
+    return DB_FAILED;
+  }
+
+  // 解析表名
+  pSyntaxNode table_node = ast->child_;
+  if (table_node == nullptr) return DB_FAILED;
+  string table_name = table_node->val_;  // 改：去掉 .str_
+
+  // 解析列定义
+  pSyntaxNode column_node = table_node->next_;
+  vector<Column *> columns;
+
+  while (column_node != nullptr) {
+    if (column_node->type_ == kNodeColumnDefinition) {
+      // 列名
+      pSyntaxNode name_node = column_node->child_;
+      string col_name = name_node->val_;  // 改：去掉 .str_
+
+      // 列类型
+      pSyntaxNode type_node = name_node->next_;
+      string col_type = type_node->val_;  // 改：去掉 .str_
+
+      TypeId type_id;
+      uint32_t col_len = 0;
+
+      if (col_type == "int" || col_type == "INT") {
+        type_id = kTypeInt;
+        col_len = sizeof(int32_t);
+      } else if (col_type == "float" || col_type == "FLOAT") {
+        type_id = kTypeFloat;
+        col_len = sizeof(float);
+      } else if (col_type.find("char") != string::npos) {
+        type_id = kTypeChar;
+        // 解析长度: char(10) -> 10
+        size_t start = col_type.find('(');
+        size_t end = col_type.find(')');
+        if (start != string::npos && end != string::npos) {
+          col_len = stoi(col_type.substr(start + 1, end - start - 1));
+        } else {
+          col_len = 0;
+        }
+      } else {
+        return DB_FAILED;
+      }
+
+      columns.push_back(new Column(col_name, type_id, col_len, false, false));
+    }
+    column_node = column_node->next_;
+  }
+
+  auto *schema = new Schema(columns);
+  TableInfo *table_info;
+  dberr_t result = dbs_[current_db_]->catalog_mgr_->CreateTable(table_name, schema, nullptr, table_info);
+
+  if (result != DB_SUCCESS) {
+    delete schema;
+  }
+  return result;
 }
 
 /**
@@ -354,7 +426,16 @@ dberr_t ExecuteEngine::ExecuteDropTable(pSyntaxNode ast, ExecuteContext *context
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteDropTable" << std::endl;
 #endif
- return DB_FAILED;
+  if (current_db_.empty()) {
+    cout << "No database selected" << endl;
+    return DB_FAILED;
+  }
+
+  pSyntaxNode table_node = ast->child_;
+  if (table_node == nullptr) return DB_FAILED;
+  string table_name = table_node->val_;  // 改：去掉 .str_
+
+  return dbs_[current_db_]->catalog_mgr_->DropTable(table_name);
 }
 
 /**
@@ -364,7 +445,35 @@ dberr_t ExecuteEngine::ExecuteShowIndexes(pSyntaxNode ast, ExecuteContext *conte
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteShowIndexes" << std::endl;
 #endif
-  return DB_FAILED;
+  if (current_db_.empty()) {
+    cout << "No database selected" << endl;
+    return DB_FAILED;
+  }
+
+  pSyntaxNode table_node = ast->child_;
+  if (table_node == nullptr) return DB_FAILED;
+  string table_name = table_node->val_;  // 改：去掉 .str_
+
+  vector<IndexInfo *> indexes;
+  dberr_t result = dbs_[current_db_]->catalog_mgr_->GetTableIndexes(table_name, indexes);
+
+  if (result != DB_SUCCESS || indexes.empty()) {
+    cout << "Empty set (0.00 sec)" << endl;
+    return DB_SUCCESS;
+  }
+
+  cout << "+--------------+------------+----------+" << endl;
+  cout << "| Table        | Non_unique | Key_name |" << endl;
+  cout << "+--------------+------------+----------+" << endl;
+
+  for (auto *index : indexes) {
+    cout << "| " << left << setw(13) << table_name << "| "
+         << left << setw(11) << "1" << "| "
+         << left << setw(9) << index->GetIndexName() << "|" << endl;
+  }
+
+  cout << "+--------------+------------+----------+" << endl;
+  return DB_SUCCESS;
 }
 
 /**
@@ -374,7 +483,34 @@ dberr_t ExecuteEngine::ExecuteCreateIndex(pSyntaxNode ast, ExecuteContext *conte
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteCreateIndex" << std::endl;
 #endif
-  return DB_FAILED;
+  if (current_db_.empty()) {
+    cout << "No database selected" << endl;
+    return DB_FAILED;
+  }
+
+  pSyntaxNode index_name_node = ast->child_;
+  if (index_name_node == nullptr) return DB_FAILED;
+  string index_name = index_name_node->val_;  // 改：去掉 .str_
+
+  pSyntaxNode on_node = index_name_node->next_;
+  if (on_node == nullptr) return DB_FAILED;
+
+  pSyntaxNode table_node = on_node->child_;
+  if (table_node == nullptr) return DB_FAILED;
+  string table_name = table_node->val_;  // 改：去掉 .str_
+
+  pSyntaxNode column_node = table_node->next_;
+  if (column_node == nullptr) return DB_FAILED;
+
+  vector<string> index_keys;
+  while (column_node != nullptr) {
+    index_keys.push_back(column_node->val_);  // 改：去掉 .str_
+    column_node = column_node->next_;
+  }
+
+  IndexInfo *index_info;
+  return dbs_[current_db_]->catalog_mgr_->CreateIndex(table_name, index_name, index_keys,
+                                                       nullptr, index_info, "bplus");
 }
 
 /**
@@ -384,7 +520,29 @@ dberr_t ExecuteEngine::ExecuteDropIndex(pSyntaxNode ast, ExecuteContext *context
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteDropIndex" << std::endl;
 #endif
-  return DB_FAILED;
+  if (current_db_.empty()) {
+    cout << "No database selected" << endl;
+    return DB_FAILED;
+  }
+
+  pSyntaxNode index_name_node = ast->child_;
+  if (index_name_node == nullptr) return DB_FAILED;
+  string index_name = index_name_node->val_;  // 改：去掉 .str_
+
+  vector<TableInfo *> tables;
+  dbs_[current_db_]->catalog_mgr_->GetTables(tables);
+
+  for (auto *table : tables) {
+    vector<IndexInfo *> indexes;
+    dbs_[current_db_]->catalog_mgr_->GetTableIndexes(table->GetTableName(), indexes);
+    for (auto *index : indexes) {
+      if (index->GetIndexName() == index_name) {
+        return dbs_[current_db_]->catalog_mgr_->DropIndex(table->GetTableName(), index_name);
+      }
+    }
+  }
+
+  return DB_INDEX_NOT_FOUND;
 }
 
 dberr_t ExecuteEngine::ExecuteTrxBegin(pSyntaxNode ast, ExecuteContext *context) {
@@ -415,7 +573,69 @@ dberr_t ExecuteEngine::ExecuteExecfile(pSyntaxNode ast, ExecuteContext *context)
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteExecfile" << std::endl;
 #endif
-  return DB_FAILED;
+  pSyntaxNode file_node = ast->child_;
+  if (file_node == nullptr) return DB_FAILED;
+  string filename = file_node->val_;
+
+  ifstream file(filename);
+  if (!file.is_open()) {
+    cout << "Cannot open file: " << filename << endl;
+    return DB_FAILED;
+  }
+
+  string line;
+  string sql;
+  int line_num = 0;
+  dberr_t final_result = DB_SUCCESS;
+
+  while (getline(file, line)) {
+    line_num++;
+    if (line.empty() || line[0] == '#') continue;
+
+    sql += line;
+    if (line.find(';') != string::npos) {
+      // 使用 Flex 提供的字符串扫描 API
+      YY_BUFFER_STATE bp = yy_scan_string(sql.c_str());
+      if (bp == nullptr) {
+        cerr << "Failed to create buffer for line " << line_num << endl;
+        sql.clear();
+        continue;
+      }
+      yy_switch_to_buffer(bp);
+
+      MinisqlParserInit();
+      int parse_ok = yyparse();
+
+      if (parse_ok == 0 && !MinisqlParserGetError()) {
+        dberr_t exec_result = Execute(MinisqlGetParserRootNode());
+        if (exec_result != DB_SUCCESS && exec_result != DB_QUIT) {
+          final_result = exec_result;
+        }
+        if (exec_result == DB_QUIT) {
+          final_result = DB_QUIT;
+        }
+      } else {
+        cerr << "Parse error at line " << line_num << ": " << MinisqlParserGetErrorMessage() << endl;
+        final_result = DB_FAILED;
+      }
+
+      MinisqlParserFinish();
+      yy_delete_buffer(bp);
+      yylex_destroy();
+      sql.clear();
+      
+      if (final_result == DB_QUIT) {
+        break;
+      }
+    }
+  }
+
+  file.close();
+  
+  if (final_result == DB_QUIT) {
+    return DB_QUIT;
+  }
+  return final_result;
 }
 
 /**
@@ -425,5 +645,5 @@ dberr_t ExecuteEngine::ExecuteQuit(pSyntaxNode ast, ExecuteContext *context) {
 #ifdef ENABLE_EXECUTE_DEBUG
   LOG(INFO) << "ExecuteQuit" << std::endl;
 #endif
- return DB_FAILED;
+  return DB_QUIT;
 }

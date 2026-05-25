@@ -29,6 +29,7 @@ bool TableIterator::operator!=(const TableIterator &itr) const {
 
 const Row &TableIterator::operator*() {
   ASSERT(rid_.Get() != INVALID_ROWID.Get(), "Dereference end iterator.");
+  row_.destroy();
   row_.SetRowId(rid_);
   if (table_heap_ != nullptr) {
     table_heap_->GetTuple(&row_, txn_);

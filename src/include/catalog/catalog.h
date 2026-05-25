@@ -45,6 +45,18 @@ class CatalogMeta {
   inline std::map<index_id_t, page_id_t> *GetIndexMetaPages() { return &index_meta_pages_; }
 
   /**
+   * Delete table meta data and its meta page.
+   */
+  bool DeleteTableMetaPage(BufferPoolManager *bpm, table_id_t table_id) {
+    if (table_meta_pages_.find(table_id) == table_meta_pages_.end()) {
+      return false;
+    }
+    bpm->DeletePage(table_meta_pages_[table_id]);
+    table_meta_pages_.erase(table_id);
+    return true;
+  }
+
+  /**
    * Delete index meta data and its meta page.
    */
   bool DeleteIndexMetaPage(BufferPoolManager *bpm, index_id_t index_id) {

@@ -1,3 +1,3 @@
 # README
 
-[report地址](https://www.overleaf.com/read/nnwkqffpgwxp#af9817)
+浙江大学数据库系统Project: MiniSQL.

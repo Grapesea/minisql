@@ -132,6 +132,9 @@ class TableHeap {
  private:
   BufferPoolManager *buffer_pool_manager_;
   page_id_t first_page_id_;
+  // `last_insert_page_id` parameter is used in Part 2 (bonus) in order to speed up insertion as O(1) complexity.
+  page_id_t last_insert_page_id;
+
   Schema *schema_;
   [[maybe_unused]] LogManager *log_manager_;
   [[maybe_unused]] LockManager *lock_manager_;

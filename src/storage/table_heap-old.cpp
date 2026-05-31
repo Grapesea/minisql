@@ -1,17 +1,15 @@
 #include "storage/table_heap.h"
 
-// ##############################################################################
-// This file is the modified version from the original table_heap.cpp,
-// using tail first insertion by addding a parameter `last_insert_page_id`.
-// ##############################################################################
-
+/**
+ * TODO: Student Implement
+ */
 bool TableHeap::InsertTuple(Row &row, Txn *txn) { 
   // If the tuple is too large (>= page_size), return false.
   if (row.GetSerializedSize(schema_) >= PAGE_SIZE) return false;
 
-  page_id_t lipi = last_insert_page_id;
-  while (lipi != INVALID_PAGE_ID) {
-    auto *page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(lipi));
+  page_id_t pi = first_page_id_;
+  while (pi != INVALID_PAGE_ID) {
+    auto *page = reinterpret_cast<TablePage *>(buffer_pool_manager_->FetchPage(pi));
     if (page == nullptr) return false;
     
     // 1. try to insert in the current page directly.
@@ -20,7 +18,6 @@ bool TableHeap::InsertTuple(Row &row, Txn *txn) {
     if (inserted) {
       page->WUnlatch();
       buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);
-      last_insert_page_id = page->GetPageId();
       return true;
     }
 
@@ -29,7 +26,7 @@ bool TableHeap::InsertTuple(Row &row, Txn *txn) {
     if (next_pi != INVALID_PAGE_ID) {
       page->WUnlatch();
       buffer_pool_manager_->UnpinPage(page->GetTablePageId(), false);
-      lipi = next_pi;
+      pi = next_pi;
       continue;
     }
 
@@ -52,7 +49,6 @@ bool TableHeap::InsertTuple(Row &row, Txn *txn) {
     page->WUnlatch();
     buffer_pool_manager_->UnpinPage(new_page_id, true);
     buffer_pool_manager_->UnpinPage(page->GetTablePageId(), true);
-    last_insert_page_id = new_page->GetPageId();
     return new_inserted;
   }
 
